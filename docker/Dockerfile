@@ -1,50 +1,116 @@
-FROM ubuntu:focal
+FROM ubuntu:jammy
 
 MAINTAINER haijiangxu <haijiangxu@hotmail.com>
 
 # 设置中文显示支持
+
 ENV LANG=C.UTF-8
+
 ENV MONGODB=localhost:27017
 
+
+
 ARG TZ=Asia/Shanghai
+
 RUN set -x \
+
     && export DEBIAN_FRONTEND=noninteractive \
+
     && sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list \
+
     && apt update \
-    && apt install -y apt-utils tzdata wget python3.8 python3-pip cron vim\
-    && ln -s /usr/bin/python3.8 /usr/bin/python \
+
+    && apt install -y apt-utils build-essential tzdata wget  cron vim \
+
     && ln -sf /usr/share/zoneinfo/$TZ  /etc/localtime \
+
     && echo $TZ > /etc/timezone \
+
     && apt clean \
+
     && rm -rf /tmp/* /var/tmp/* /var/cache/* /usr/share/doc/* /usr/share/man/* /var/lib/apt/lists/*
 
-RUN wget https://downloads.sourceforge.net/project/ta-lib/ta-lib/0.4.0/ta-lib-0.4.0-src.tar.gz \
+
+
+RUN [ ! -f ta-lib-0.4.0-src.tar.gz ] && wget -c -O ta-lib-0.4.0-src.tar.gz http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz  \
+
     && tar xvf ta-lib-0.4.0-src.tar.gz \
+
     && cd ta-lib \
+
     && ./configure --prefix=/usr \
+
     && make \
+
     && make install \
+
     && cd .. \
+
     && rm -rf ta-lib \
+
     && rm ta-lib-0.4.0-src.tar.gz
 
-RUN pip config set global.index-url  http://pypi.tuna.tsinghua.edu.cn/simple \
-    && pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn \
-    && pip install qff \
-    && pip install ta_lib \
-    && pip install jupyterlab jupyter-console jupyterlab-language-pack-zh-CN jupyterlab-drawio jupyterlab-code-formatter black isort jupyterlab-lsp 'python-lsp-server[all]'
+RUN [ ! -f conda3.sh ] && wget -c -O conda3.sh  https://repo.anaconda.com/archive/Anaconda3-2023.03-0-Linux-x86_64.sh  && chmod a+x conda3.sh
+
+# install Anaconda3
+
+RUN  bash conda3.sh -b -p /opt/conda  && rm conda3.sh
+
+
+
+ENV PATH=/opt/conda/bin:/usr/local/bin:$PATH  \
+
+ LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
+
+RUN conda config --add channels conda-forge
+
+RUN conda update -y conda
+
+RUN conda install -y libgcc
+RUN conda install -c conda-forge ta-lib
+
+
+
+RUN  echo 'export PATH=/opt/conda/bin:$PATH'  > /etc/profile.d/conda.sh
+
+RUN pip config set global.index-url  https://mirrors.aliyun.com/pypi/simple
+
+#    && pip config set global.trusted-host pypi.tuna.tsinghua.edu.cn \
+
+RUN pip install qff \
+    && pip install urllib3==1.26.20 \
+    && pip install akshare==1.9.99 \
+    && pip install numpy==1.24.4 \
+    && pip install pandas==2.0.3
+
+RUN pip install jupyterlab jupyter-console jupyterlab-language-pack-zh-CN jupyterlab-drawio jupyterlab-code-formatter black isort jupyterlab-lsp 'python-lsp-server[all]'
+
+
 
 COPY init.sh /root/
+
 COPY jupyter_lab_config.py /root/.jupyter/
 
+
+
 RUN mkdir /root/work\
-    && echo "00 16 * * mon-fri root python /usr/local/lib/python3.8/dist-packages/qff/store/update_all.py > /root/work/cron.log 2>&1" > /etc/cron.d/daily_update\
+
+    && echo "00 16 * * mon-fri root python /opt/conda/lib/python3.10/site-packages/qff/store/update_all.py > /root/work/cron.log 2>&1" > /etc/cron.d/daily_update \
+    #/usr/local/lib/python3.8/dist-packages/qff/store/update_all.py > /root/work/cron.log 2>&1" > /etc/cron.d/daily_update\
+
     && crontab /etc/cron.d/daily_update\
+
     && chmod +x /root/init.sh
 
+
+
 EXPOSE 8765
+
 WORKDIR /root
+
 VOLUME /root/work
 
-CMD ["bash", "/root/init.sh"]
 
+
+CMD ["bash", "/root/init.sh"]
